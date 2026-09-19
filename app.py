@@ -66,6 +66,28 @@ def _amostra(cidade: str | None, canal: str | None, cliente: int | None, max_doc
 
 
 @st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
+def _canais_cliente(canal: str | None, cliente: int | None):
+    return queries.canais_por_cliente(queries.filtro(canal=canal, cliente=cliente))
+
+
+@st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
+def _velocidade(cidade: str | None, canal: str | None, cliente: int | None):
+    return queries.velocidade_transportadoras(
+        queries.filtro(cidade=cidade, canal=canal, cliente=cliente)
+    )
+
+
+@st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
+def _por_estado(canal: str | None, cliente: int | None):
+    return queries.cotacoes_por_estado(queries.filtro(canal=canal, cliente=cliente))
+
+
+@st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
+def _erros_estado(canal: str | None, cliente: int | None):
+    return queries.erros_por_estado(queries.filtro(canal=canal, cliente=cliente))
+
+
+@st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
 def _faixas_peso(cidade: str | None, canal: str | None, cliente: int | None):
     return queries.custo_por_faixa_peso(
         queries.filtro(cidade=cidade, canal=canal, cliente=cliente)
@@ -99,13 +121,21 @@ def main() -> None:
         else int(lojas.loc[lojas["nome"] == nome_loja, "cliente"].iloc[0])
     )
 
-    painel, conversa = st.tabs(["Dashboard", "Pergunte aos dados"])
+    painel, por_cliente, geografia, conversa = st.tabs(
+        ["Dashboard", "Por cliente", "Geografia", "Pergunte aos dados"]
+    )
 
     with conversa:
         _chat(cidade, canal, nome_loja)
 
     with painel:
         _dashboard(cidade, canal, cliente, nome_loja, canais, max_docs)
+
+    with por_cliente:
+        _por_cliente(cidade, canal, cliente, max_docs)
+
+    with geografia:
+        _geografia(canal, cliente, max_docs)
 
 
 def _dashboard(cidade, canal, cliente, nome_loja, canais, max_docs) -> None:
@@ -183,6 +213,92 @@ def _dashboard(cidade, canal, cliente, nome_loja, canais, max_docs) -> None:
 
     with st.expander("Transportadoras vencedoras · tabela"):
         st.dataframe(vencedoras, width="stretch")
+
+
+def _por_cliente(cidade, canal, cliente, max_docs) -> None:
+    """Canais, dispersão de preço, quem cobra mais e velocidade — por loja."""
+    amostra = _amostra(cidade, canal, cliente, max_docs)
+
+    st.subheader("Canais usados por cliente")
+    mix = _canais_cliente(canal, cliente)
+    if mix.empty:
+        st.info("Sem consultas para este filtro.")
+    else:
+        st.plotly_chart(
+            charts.canais_por_cliente(mix), width="stretch", key="mix_canais"
+        )
+
+    st.subheader("Maior desvio de preço dentro da mesma cotação")
+    st.caption(
+        "nf.menor_preco tem um elemento só — a dispersão real está entre as "
+        "ofertas de nf.cotacoes da mesma consulta."
+    )
+    desvios = queries.maiores_desvios(amostra)
+    por_uf = queries.desvio_por_estado(amostra)
+    if desvios.empty:
+        st.info("Amostra sem consultas com mais de uma oferta.")
+    else:
+        esq, dir_ = st.columns([3, 2])
+        esq.dataframe(desvios, width="stretch", hide_index=True)
+        dir_.plotly_chart(
+            charts.desvio_estados(por_uf), width="stretch", key="desvio_uf"
+        )
+
+    st.subheader("Quem mais cobra quando ganha, e quem entrega mais rápido")
+    vencedoras = _vencedoras(cidade, canal, cliente)
+    esq2, dir2 = st.columns(2)
+    if vencedoras.empty:
+        esq2.info("Sem transportadoras vencedoras neste filtro.")
+    else:
+        caras = vencedoras.nlargest(10, "custo_mediano")
+        esq2.dataframe(
+            caras[["transportadora", "custo_mediano", "custo_medio", "cotacoes"]],
+            width="stretch",
+            hide_index=True,
+        )
+    velocidade = _velocidade(cidade, canal, cliente)
+    if velocidade.empty:
+        dir2.info("Sem dados de prazo neste filtro.")
+    else:
+        dir2.plotly_chart(
+            charts.velocidade_transportadoras(velocidade),
+            width="stretch",
+            key="velocidade",
+        )
+
+
+def _geografia(canal, cliente, max_docs) -> None:
+    """Destino: volume, cobertura e preço por quilômetro."""
+    st.subheader("Consultas por estado de destino")
+    st.caption("Use o filtro de canal na barra lateral para ver o efeito do canal.")
+    estados = _por_estado(canal, cliente)
+    erros = _erros_estado(canal, cliente)
+    esq, dir_ = st.columns(2)
+    if estados.empty:
+        esq.info("Sem consultas para este filtro.")
+    else:
+        esq.plotly_chart(
+            charts.cotacoes_estados(estados), width="stretch", key="uf_volume"
+        )
+    if erros.empty:
+        dir_.info("Sem dados de cobertura para este filtro.")
+    else:
+        dir_.plotly_chart(
+            charts.sem_cobertura_estados(erros), width="stretch", key="uf_erro"
+        )
+
+    st.subheader("Preço por quilômetro")
+    st.caption(
+        "Distância aproximada entre a capital da UF de origem (CEP de "
+        "nf.request_item.origin) e a capital do destino. O CEP de origem "
+        "aparece em parte das consultas; o resto fica de fora do cálculo."
+    )
+    amostra = _amostra(None, canal, cliente, max_docs)
+    por_km = queries.preco_por_km(amostra)
+    if por_km.empty:
+        st.info("Amostra sem CEP de origem suficiente para calcular km.")
+    else:
+        st.plotly_chart(charts.preco_por_km(por_km), width="stretch", key="preco_km")
 
 
 def _chat(cidade: str | None, canal: str | None, loja: str = "Todos") -> None:

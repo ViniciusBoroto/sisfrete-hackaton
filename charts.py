@@ -169,6 +169,142 @@ def premio_por_dia(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def canais_por_cliente(df: pd.DataFrame) -> go.Figure:
+    """Mix de canais de cada loja, em participação — o volume absoluto esconde
+    as lojas menores."""
+    ordem = (
+        df.groupby("loja")["cotacoes"].sum().sort_values(ascending=True).index.tolist()
+    )
+    fig = px.bar(
+        df,
+        x="participacao",
+        y="loja",
+        color="canal",
+        orientation="h",
+        category_orders={"loja": ordem},
+        custom_data=["cotacoes", "canal"],
+        labels={"participacao": "Participação", "loja": "Loja", "canal": "Canal"},
+        title="Uso de cada canal por cliente",
+        template=TEMPLATE,
+    )
+    fig.update_traces(
+        hovertemplate="%{y}<br>%{customdata[1]}: %{x:.1%}"
+        "<br>Consultas: %{customdata[0]:,}<extra></extra>"
+    )
+    fig.update_layout(
+        xaxis_tickformat=".0%",
+        legend=dict(orientation="h", yanchor="top", y=-0.18),
+    )
+    return fig
+
+
+def desvio_estados(df: pd.DataFrame) -> go.Figure:
+    """Distância entre a oferta mais cara e a mais barata da mesma consulta."""
+    fig = px.bar(
+        df,
+        x="desvio_mediano",
+        y="uf",
+        orientation="h",
+        color="desvio_mediano",
+        color_continuous_scale=["#123b32", "#00b978"],
+        custom_data=["desvio_pct_mediano", "consultas"],
+        labels={"desvio_mediano": "Desvio mediano (R$)", "uf": "UF"},
+        title="Dispersão de preço dentro da mesma cotação",
+        template=TEMPLATE,
+    )
+    fig.update_traces(
+        hovertemplate="%{y}<br>Desvio: R$ %{x:.2f}"
+        "<br>Equivale a %{customdata[0]:.0%} do preço mais barato"
+        "<br>Consultas: %{customdata[1]}<extra></extra>"
+    )
+    fig.update_layout(coloraxis_showscale=False)
+    return fig
+
+
+def velocidade_transportadoras(df: pd.DataFrame) -> go.Figure:
+    """Prazo prometido, separando manuseio de transporte."""
+    rotulos = df["transportadora"]
+    fig = go.Figure()
+    fig.add_bar(x=df["manuseio"], y=rotulos, orientation="h", name="Manuseio (dias)")
+    fig.add_bar(x=df["transporte"], y=rotulos, orientation="h", name="Transporte (dias)")
+    fig.update_layout(
+        template=TEMPLATE,
+        barmode="stack",
+        title="Velocidade prometida pelas transportadoras mais rápidas",
+        xaxis_title="Dias até a entrega",
+        yaxis_title="Transportadora",
+        legend=dict(orientation="h", yanchor="top", y=-0.18),
+    )
+    return fig
+
+
+def cotacoes_estados(df: pd.DataFrame, top: int = 15) -> go.Figure:
+    """Volume de consultas por UF de destino."""
+    dados = df.nlargest(top, "cotacoes").sort_values("cotacoes")
+    fig = px.bar(
+        dados,
+        x="cotacoes",
+        y="uf",
+        orientation="h",
+        color="canal_dominante",
+        labels={
+            "cotacoes": "Consultas",
+            "uf": "UF",
+            "canal_dominante": "Canal dominante",
+        },
+        title="Consultas por estado de destino",
+        template=TEMPLATE,
+    )
+    fig.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.18))
+    return fig
+
+
+def sem_cobertura_estados(df: pd.DataFrame, top: int = 15) -> go.Figure:
+    """Onde a consulta volta vazia: x_error_cotacao 3 e 4."""
+    dados = df.nlargest(top, "participacao").sort_values("participacao")
+    fig = px.bar(
+        dados,
+        x="participacao",
+        y="uf",
+        orientation="h",
+        color="participacao",
+        color_continuous_scale=["#5b2419", "#dc5a5a"],
+        custom_data=["sem_cobertura", "consultas"],
+        labels={"participacao": "Consultas sem cobertura", "uf": "UF"},
+        title="Estados onde a cotação volta vazia",
+        template=TEMPLATE,
+    )
+    fig.update_traces(
+        hovertemplate="%{y}<br>%{x:.1%} sem cobertura"
+        "<br>%{customdata[0]:,} de %{customdata[1]:,} consultas<extra></extra>"
+    )
+    fig.update_layout(xaxis_tickformat=".0%", coloraxis_showscale=False)
+    return fig
+
+
+def preco_por_km(df: pd.DataFrame) -> go.Figure:
+    """R$ por km aproximado de cada transportadora vencedora."""
+    fig = px.bar(
+        df,
+        x="preco_km_mediano",
+        y="transportadora",
+        orientation="h",
+        color="preco_km_mediano",
+        color_continuous_scale="Teal",
+        custom_data=["distancia_mediana", "consultas"],
+        labels={"preco_km_mediano": "R$ por km", "transportadora": "Transportadora"},
+        title="Preço por quilômetro (distância aproximada entre capitais)",
+        template=TEMPLATE,
+    )
+    fig.update_traces(
+        hovertemplate="%{y}<br>R$ %{x:.3f} por km"
+        "<br>Distância mediana: %{customdata[0]:.0f} km"
+        "<br>Consultas: %{customdata[1]}<extra></extra>"
+    )
+    fig.update_layout(coloraxis_showscale=False)
+    return fig
+
+
 def custo_por_faixa_peso(df: pd.DataFrame) -> go.Figure:
     """Custo médio por faixa de peso, com o volume de cotações no hover."""
     fig = px.bar(

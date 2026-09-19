@@ -10,6 +10,7 @@ import datetime as dt
 
 import pandas as pd
 
+import geo
 from api import INDEX, TIME_ZONE, get_client
 
 # A carga vai de 01/09 a 14/09 — duas janelas fechadas de 7 dias.
@@ -418,8 +419,16 @@ def pressao_por_estado(query: dict | None = None, top: int = 27) -> pd.DataFrame
 
 # --------------------------------------------------- amostra por consulta
 
+# 3 e 4 significam "nenhuma transportadora atendeu o destino" — validado:
+# 100% dessas consultas ficam sem nf.menor_preco.
+ERROS_SEM_COBERTURA = [3, 4]
+
 AMOSTRA = [
     "nf.uf",
+    "nf.cliente",
+    "nf.x_error_cotacao",
+    "nf.request_item.origin",
+    "nf.cotacoes.total",
     "nf.nome_cidade",
     "nf.canal_web",
     "nf.peso",
@@ -459,9 +468,20 @@ def amostra(
         nf = doc.get("nf", {}) or {}
         barata, rapida = _primeiro(nf.get("menor_preco")), _primeiro(nf.get("menor_prazo"))
         cotacoes = nf.get("cotacoes") or []
+        totais = [
+            c["total"]
+            for c in cotacoes
+            if isinstance(c, dict) and c.get("total") and 0 < c["total"] < 99_999
+        ]
+        origem_cep = (_primeiro(nf.get("request_item")) or {}).get("origin")
+        origem_uf = geo.uf_por_cep(origem_cep)
         linhas.append(
             {
                 "uf": nf.get("uf"),
+                "origem_uf": origem_uf,
+                "erro": nf.get("x_error_cotacao"),
+                "preco_min": min(totais) if totais else None,
+                "preco_max": max(totais) if totais else None,
                 "cidade": nf.get("nome_cidade"),
                 "canal": nf.get("canal_web"),
                 "peso": nf.get("peso"),
@@ -482,6 +502,18 @@ def amostra(
     # Só faz sentido quando a rápida é realmente mais rápida e mais cara.
     valido = (dias > 0) & (extra > 0)
     df["premio_por_dia"] = (extra / dias).where(valido)
+
+    # Desvio dentro da mesma consulta: quanto a oferta mais cara passa da mais
+    # barata. menor_preco tem um elemento só, então a dispersão vive aqui.
+    df["desvio"] = df["preco_max"] - df["preco_min"]
+    df["desvio_pct"] = (df["desvio"] / df["preco_min"]).where(df["preco_min"] > 0)
+
+    df["distancia_km"] = [
+        geo.distancia_km(o, d) for o, d in zip(df["origem_uf"], df["uf"])
+    ]
+    df["preco_por_km"] = (df["preco_barato"] / df["distancia_km"]).where(
+        df["distancia_km"].notna()
+    )
     return df
 
 
@@ -521,6 +553,214 @@ def premio_por_dia(df: pd.DataFrame, top: int = 10) -> pd.DataFrame:
         .sort_values("premio_mediano")
     )
     return resumo
+
+
+def canais_por_cliente(
+    query: dict | None = None, top_clientes: int = 8, top_canais: int = 6
+) -> pd.DataFrame:
+    """Uso de cada canal de venda por cliente, com o nome da loja."""
+    aggs = {
+        "clientes": {
+            "terms": {"field": "nf.cliente", "size": top_clientes},
+            "aggs": {
+                "canais": {"terms": {"field": "nf.canal_web", "size": top_canais}},
+                "tokens": {"terms": {"field": LOJA, "size": 10}},
+            },
+        }
+    }
+    buckets = get_client().aggregate(aggs, query or periodo())["clientes"]["buckets"]
+    linhas = []
+    sem_nome = 0
+    for b in buckets:
+        nome = _nome_cliente([t["key"] for t in b["tokens"]["buckets"]])
+        if not nome:
+            sem_nome += 1
+            nome = f"Loja sem nome {sem_nome}"
+        for canal in b["canais"]["buckets"]:
+            linhas.append(
+                {
+                    "loja": nome,
+                    "canal": canal["key"],
+                    "cotacoes": canal["doc_count"],
+                }
+            )
+    df = pd.DataFrame(linhas)
+    if df.empty:
+        return df
+    total = df.groupby("loja")["cotacoes"].transform("sum")
+    df["participacao"] = df["cotacoes"] / total
+    return df
+
+
+def maiores_desvios(df: pd.DataFrame, top: int = 15) -> pd.DataFrame:
+    """Consultas em que a oferta mais cara mais se distancia da mais barata."""
+    if df.empty or "desvio" not in df:
+        return pd.DataFrame()
+    validas = df[df["opcoes"] > 1].dropna(subset=["desvio"])
+    if validas.empty:
+        return pd.DataFrame()
+    colunas = [
+        "cidade",
+        "uf",
+        "canal",
+        "peso",
+        "opcoes",
+        "preco_min",
+        "preco_max",
+        "desvio",
+        "desvio_pct",
+    ]
+    return validas.nlargest(top, "desvio")[colunas]
+
+
+def desvio_por_estado(df: pd.DataFrame, top: int = 12) -> pd.DataFrame:
+    """Dispersão mediana de preço entre as ofertas, por UF."""
+    if df.empty or "desvio" not in df:
+        return pd.DataFrame()
+    validas = df[df["opcoes"] > 1].dropna(subset=["desvio"])
+    if validas.empty:
+        return pd.DataFrame()
+    return (
+        validas.groupby("uf")
+        .agg(
+            desvio_mediano=("desvio", "median"),
+            desvio_pct_mediano=("desvio_pct", "median"),
+            consultas=("desvio", "size"),
+        )
+        .reset_index()
+        .nlargest(top, "consultas")
+        .sort_values("desvio_mediano")
+    )
+
+
+def velocidade_transportadoras(
+    query: dict | None = None, top: int = 15, criterio: str = "prazo"
+) -> pd.DataFrame:
+    """Prazo prometido pelas transportadoras vencedoras, por nome.
+
+    shipping_time é o transporte; promise inclui o tempo de manuseio. Os dois
+    são dias, não datas — não há o que subtrair do @timestamp.
+    """
+    raiz = RAPIDA if criterio == "prazo" else BARATA
+    aggs = {
+        "transportadoras": {
+            "terms": {"field": f"{raiz}.shipping_company", "size": top * 3},
+            "aggs": {
+                "transporte": {"avg": {"field": f"{raiz}.shipping_time"}},
+                "promessa": {"avg": {"field": f"{raiz}.promise"}},
+                "manuseio": {"avg": {"field": f"{raiz}.handling_time"}},
+            },
+        }
+    }
+    buckets = get_client().aggregate(aggs, query or periodo())["transportadoras"][
+        "buckets"
+    ]
+    df = pd.DataFrame(
+        {
+            "transportadora": b["key"].title(),
+            "cotacoes": b["doc_count"],
+            "transporte": b["transporte"]["value"],
+            "promessa": b["promessa"]["value"],
+            "manuseio": b["manuseio"]["value"],
+        }
+        for b in buckets
+    )
+    if df.empty:
+        return df
+    return (
+        df.assign(
+            pt=df["transporte"] * df["cotacoes"],
+            pp=df["promessa"] * df["cotacoes"],
+            pm=df["manuseio"] * df["cotacoes"],
+        )
+        .groupby("transportadora", as_index=False)
+        .agg(
+            cotacoes=("cotacoes", "sum"),
+            pt=("pt", "sum"),
+            pp=("pp", "sum"),
+            pm=("pm", "sum"),
+        )
+        .assign(
+            transporte=lambda d: d["pt"] / d["cotacoes"],
+            promessa=lambda d: d["pp"] / d["cotacoes"],
+            manuseio=lambda d: d["pm"] / d["cotacoes"],
+        )
+        .drop(columns=["pt", "pp", "pm"])
+        .nlargest(top, "cotacoes")
+        .sort_values("promessa")
+    )
+
+
+def cotacoes_por_estado(query: dict | None = None, top: int = 27) -> pd.DataFrame:
+    """Volume de consultas por UF de destino."""
+    aggs = {
+        "ufs": {
+            "terms": {"field": "nf.uf", "size": top},
+            "aggs": {"canais": {"terms": {"field": "nf.canal_web", "size": 5}}},
+        }
+    }
+    buckets = get_client().aggregate(aggs, query or periodo())["ufs"]["buckets"]
+    return pd.DataFrame(
+        {
+            "uf": b["key"],
+            "cotacoes": b["doc_count"],
+            "canal_dominante": (
+                b["canais"]["buckets"][0]["key"] if b["canais"]["buckets"] else "—"
+            ),
+        }
+        for b in buckets
+    )
+
+
+def erros_por_estado(query: dict | None = None, top: int = 27) -> pd.DataFrame:
+    """UFs onde mais consultas ficam sem nenhuma cotação (x_error 3 e 4)."""
+    base = query or periodo()
+    aggs = {"ufs": {"terms": {"field": "nf.uf", "size": top}}}
+    total = get_client().aggregate(aggs, base)["ufs"]["buckets"]
+
+    com_erro = {"bool": {"filter": [base, {"terms": {"nf.x_error_cotacao": ERROS_SEM_COBERTURA}}]}}
+    falhas = get_client().aggregate(aggs, com_erro)["ufs"]["buckets"]
+    mapa = {b["key"]: b["doc_count"] for b in falhas}
+
+    df = pd.DataFrame(
+        {
+            "uf": b["key"],
+            "consultas": b["doc_count"],
+            "sem_cobertura": mapa.get(b["key"], 0),
+        }
+        for b in total
+    )
+    if df.empty:
+        return df
+    df["participacao"] = df["sem_cobertura"] / df["consultas"]
+    return df.sort_values("sem_cobertura", ascending=False)
+
+
+def preco_por_km(df: pd.DataFrame, top: int = 15) -> pd.DataFrame:
+    """R$ por km de cada transportadora, na cotação que ela ganhou.
+
+    A distância é aproximada: capital da UF de origem até a capital da UF de
+    destino (ver geo.py). Vale para comparar transportadoras, não para medir
+    rota real.
+    """
+    if df.empty or "preco_por_km" not in df:
+        return pd.DataFrame()
+    validas = df.dropna(subset=["preco_por_km", "transportadora_barata"])
+    validas = validas[validas["transportadora_barata"].str.strip() != ""]
+    if validas.empty:
+        return pd.DataFrame()
+    return (
+        validas.groupby("transportadora_barata")
+        .agg(
+            preco_km_mediano=("preco_por_km", "median"),
+            distancia_mediana=("distancia_km", "median"),
+            consultas=("preco_por_km", "size"),
+        )
+        .reset_index()
+        .rename(columns={"transportadora_barata": "transportadora"})
+        .nlargest(top, "consultas")
+        .sort_values("preco_km_mediano")
+    )
 
 
 # ----------------------------------------------- correlação transportadora

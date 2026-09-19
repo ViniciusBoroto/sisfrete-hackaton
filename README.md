@@ -10,6 +10,7 @@ Dashboard de análise das cotações de frete da Sisfrete (Hackathon Unimar Tech
 | `api.py` | Camada fina de HTTP: autenticação, retentativas, erros, paginação |
 | `queries.py` | Consultas OpenSearch e preparação em DataFrames |
 | `charts.py` | Gráficos Plotly |
+| `geo.py` | CEP de origem → UF e distância aproximada entre capitais |
 | `chat.py` | Chatbot: tool use sobre as funções de `queries.py` (OpenRouter), 8 ferramentas |
 
 Fluxo: `app.py` → `queries.py` → `api.py` → Sisfrete/OpenSearch → `queries.py` → `charts.py` → dashboard.
@@ -35,6 +36,15 @@ streamlit run app.py
    consulta, sem o problema do array achatado).
 4. **Custo por faixa de peso** e **preço da pressa** (R$ por dia economizado
    entre a opção mais barata e a mais rápida).
+
+Abas extras:
+
+- **Por cliente** — mix de canais por loja, maior desvio de preço dentro da
+  mesma cotação, quem mais cobra quando ganha e velocidade prometida
+  (manuseio + transporte).
+- **Geografia** — consultas por UF de destino, estados onde a cotação volta
+  vazia (`x_error_cotacao` 3 e 4, validado: 100% dessas ficam sem oferta) e
+  preço por quilômetro com distância aproximada entre capitais.
 
 Filtros: cidade, canal e **cliente/loja por nome**. A base não tem razão
 social: o nome é derivado de `nf.token_nome` ("Mercado Livre - PNEUWEB" vira
