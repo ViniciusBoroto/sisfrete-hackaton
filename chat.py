@@ -19,7 +19,7 @@ import queries
 
 load_dotenv()
 
-MODEL = os.getenv("OPENROUTER_MODEL", "anthropic/claude-sonnet-5")
+MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash-0731:free")
 BASE_URL = "https://openrouter.ai/api/v1"
 MAX_RODADAS = 6
 

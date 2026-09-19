@@ -257,11 +257,19 @@ def cotacoes_detalhadas(
         return df
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df["prazo"] = df[["p_min", "p_max"]].mean(axis=1)
-    return df
+    # 99999 é sentinela de "sem cobertura" e zerados são cotação inválida:
+    # três linhas dessas esticam o eixo do gráfico em 100x.
+    return df[(df["total"] > 0) & (df["total"] < 99_999)]
 
 
-def resumo_transportadoras(df: pd.DataFrame) -> pd.DataFrame:
-    """Custo médio, prazo médio e volume por transportadora."""
+def resumo_transportadoras(
+    df: pd.DataFrame, min_cotacoes: int = 5
+) -> pd.DataFrame:
+    """Custo médio, prazo médio e volume por transportadora.
+
+    Transportadoras com pouquíssimas cotações viram outlier visual sem
+    significar nada; `min_cotacoes` corta esse ruído.
+    """
     if df.empty:
         return df
     resumo = (
@@ -275,4 +283,4 @@ def resumo_transportadoras(df: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
         .sort_values("custo_medio")
     )
-    return resumo
+    return resumo[resumo["cotacoes"] >= min_cotacoes]

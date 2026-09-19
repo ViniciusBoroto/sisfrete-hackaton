@@ -15,16 +15,20 @@ def custo_x_prazo(resumo: pd.DataFrame, titulo: str = "Custo x prazo") -> go.Fig
     O tamanho é o volume de cotações; cor por transportadora viraria uma
     legenda de centenas de itens, então ela fica no hover.
     """
+    # Mediana no eixo: a média de uma transportadora com poucas cotações caras
+    # estica o gráfico e esconde o pelotão.
     fig = px.scatter(
         resumo,
         x="prazo_medio",
-        y="custo_medio",
+        y="custo_mediano",
         size="cotacoes",
         color="cotacoes",
         color_continuous_scale="Teal",
         hover_name=resumo["transportadora"].astype(str),
+        hover_data={"custo_medio": ":.2f"},
         labels={
             "prazo_medio": "Prazo médio (dias)",
+            "custo_mediano": "Custo mediano (R$)",
             "custo_medio": "Custo médio (R$)",
             "cotacoes": "Cotações",
         },
