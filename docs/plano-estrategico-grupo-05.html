@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grupo 05 — Radar de Oportunidades Logísticas</title>
+  <style>
+    :root{--ink:#10251f;--muted:#587069;--green:#00b978;--green2:#dff8ee;--navy:#273b82;--blue:#e9edff;--amber:#f3a712;--red:#dc5a5a;--paper:#f6f8f7;--white:#fff;--line:#d8e3df}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 Inter,Segoe UI,Arial,sans-serif}
+    main{max-width:1120px;margin:auto;padding:28px}.hero{background:#041b14;color:white;border-radius:24px;padding:42px;position:relative;overflow:hidden}.hero:after{content:"05";position:absolute;right:28px;bottom:-48px;font-size:190px;font-weight:900;color:#0c3529}.eyebrow{color:#7de2bd;text-transform:uppercase;letter-spacing:.14em;font-weight:800;font-size:13px}.hero h1{font-size:clamp(34px,6vw,64px);line-height:1.02;margin:12px 0;max-width:760px}.hero h1 span{color:#00ef9c}.hero p{max-width:760px;color:#b8cec6;font-size:19px}.badge{display:inline-block;padding:7px 12px;border:1px solid #28614e;border-radius:99px;margin:8px 6px 0 0;color:#b9e9d7;font-size:13px}
+    section{margin:30px 0;background:white;border:1px solid var(--line);border-radius:20px;padding:28px}.section-title{display:flex;gap:14px;align-items:center;margin-bottom:18px}.num{font:800 14px ui-monospace;color:var(--green)}h2{font-size:29px;margin:0;line-height:1.15}h3{font-size:18px;margin:0 0 8px}p{margin:8px 0}.lead{font-size:20px;color:#344b44}.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}.card{grid-column:span 3;border:1px solid var(--line);border-radius:14px;padding:18px;background:#fff}.card strong{display:block;font-size:28px}.card small,.muted{color:var(--muted)}.wide{grid-column:span 6}.third{grid-column:span 4}.full{grid-column:1/-1}
+    .callout{border-left:4px solid var(--navy);background:var(--blue);padding:18px 20px;border-radius:0 12px 12px 0}.callout.green{border-color:var(--green);background:var(--green2)}.callout.warn{border-color:var(--amber);background:#fff5df}.flow{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:18px 0}.step{background:#eef4f2;border:1px solid var(--line);border-radius:10px;padding:12px 15px;font-weight:700}.arrow{color:var(--green);font-size:24px;font-weight:bold}
+    table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}th,td{text-align:left;padding:11px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.priority{font-weight:800;color:var(--navy)}
+    .chart{height:210px;border:1px solid var(--line);border-radius:14px;padding:20px;position:relative;background:linear-gradient(#fff,#f8fbfa)}.bars{height:150px;display:flex;align-items:flex-end;gap:14px}.bar{flex:1;background:var(--green);border-radius:7px 7px 0 0;min-width:35px;position:relative}.bar:nth-child(2){background:#3d5ba9}.bar:nth-child(n+3){background:#9eb2ab}.bar span{position:absolute;bottom:-26px;width:100%;text-align:center;font-size:12px}.quadrant{background:linear-gradient(90deg,transparent 49.7%,#ccd8d4 50%,transparent 50.3%),linear-gradient(transparent 49.7%,#ccd8d4 50%,transparent 50.3%),linear-gradient(135deg,#e6fff5,#fff0ef)}.dot{position:absolute;width:18px;height:18px;border-radius:50%;background:var(--navy);box-shadow:0 0 0 5px #273b8230}.dot.a{left:23%;top:62%}.dot.b{left:67%;top:24%;background:var(--red)}.dot.c{left:72%;top:68%;background:var(--amber)}.axis{position:absolute;font-size:11px;color:var(--muted)}.axis.x{right:10px;bottom:5px}.axis.y{left:8px;top:6px}
+    code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#eef3f1;border-radius:5px;padding:2px 5px}.formula{font:700 15px ui-monospace,SFMono-Regular,Consolas,monospace;background:#09251c;color:#c9fbe9;padding:16px;border-radius:12px;overflow:auto}.checklist{list-style:none;padding:0}.checklist li{margin:8px 0;padding-left:28px;position:relative}.checklist li:before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:900}.danger li:before{content:"!";color:var(--red)}
+    .status{display:inline-block;padding:4px 8px;border-radius:99px;font-size:11px;font-weight:800;text-transform:uppercase}.confirmed{background:var(--green2);color:#087552}.validate{background:#fff0cf;color:#875800}.agent{border-top:4px solid var(--green)}footer{color:var(--muted);text-align:center;padding:20px;font-size:13px}
+    @media(max-width:760px){main{padding:12px}.hero,section{padding:22px}.card,.wide,.third{grid-column:1/-1}.hero:after{display:none}.flow{display:block}.arrow{transform:rotate(90deg);display:block;text-align:center}}
+    @media print{body{background:white}main{max-width:none;padding:0}.hero,section{break-inside:avoid;box-shadow:none}section{margin:14px 0}.hero{border-radius:0}.no-print{display:none}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <div class="eyebrow">Hackathon Unimar Tech Summit 2026 · Grupo 05</div>
+    <h1>Radar de <span>Oportunidades Logísticas</span></h1>
+    <p>Plano de alinhamento para transformar milhões de cotações em decisões: onde há pressão de custo, prazo ruim, pouca concorrência e maior impacto operacional?</p>
+    <span class="badge">Somente setembro/2026</span><span class="badge">Janelas de 7 dias</span><span class="badge">Decisão, não só visualização</span>
+  </header>
+
+  <section>
+    <div class="section-title"><span class="num">01</span><h2>A tese central</h2></div>
+    <p class="lead"><strong>Muito volume não significa boa experiência logística.</strong> O produto deve localizar onde preço, prazo, cobertura e concorrência criam maior risco — e indicar onde agir primeiro.</p>
+    <div class="flow"><div class="step">Onde está a demanda?</div><div class="arrow">→</div><div class="step">Onde faltam opções?</div><div class="arrow">→</div><div class="step">Onde custo e prazo pioram?</div><div class="arrow">→</div><div class="step">Qual ação gera impacto?</div></div>
+    <div class="callout green"><strong>Entrega que impressiona:</strong> um dashboard que termina em um ranking de oportunidades com motivo, evidência e recomendação — não em uma coleção de gráficos isolados.</div>
+  </section>
+
+  <section>
+    <div class="section-title"><span class="num">02</span><h2>Sinais já confirmados</h2></div>
+    <p class="muted">Consulta agregada de 01/09 a 15/09, horário de Brasília. A base é viva; congelem o intervalo usado na apresentação.</p>
+    <div class="grid">
+      <div class="card"><small>Consultas</small><strong>55,88 mi</strong><span class="status confirmed">confirmado</span></div>
+      <div class="card"><small>Ofertas</small><strong>143,93 mi</strong><small>≈ 2,58 por consulta</small></div>
+      <div class="card"><small>Mercado Livre</small><strong>54,1%</strong><small>30,25 mi</small></div>
+      <div class="card"><small>Shopee</small><strong>42,6%</strong><small>23,79 mi</small></div>
+      <div class="card"><small>São Paulo</small><strong>29,8%</strong><small>16,67 mi</small></div>
+      <div class="card"><small>Minas Gerais</small><strong>10,5%</strong><small>5,86 mi</small></div>
+      <div class="card"><small>Rio de Janeiro</small><strong>9,2%</strong><small>5,12 mi</small></div>
+      <div class="card"><small>Bahia</small><strong>8,4%</strong><small>4,68 mi</small></div>
+    </div>
+    <div class="callout warn" style="margin-top:16px"><strong>Descoberta crítica:</strong> médias brutas são enganosas. Há pesos, cubagens e preços extremos. Usar mediana, P25/P75 e regras transparentes de qualidade é parte da solução.</div>
+  </section>
+
+  <section>
+    <div class="section-title"><span class="num">03</span><h2>Os cinco blocos do MVP</h2></div>
+    <table>
+      <thead><tr><th>Prioridade</th><th>Visual</th><th>Pergunta respondida</th><th>Métricas</th><th>Decisão</th></tr></thead>
+      <tbody>
+        <tr><td class="priority">1</td><td>Mapa de pressão logística</td><td>Onde está o maior problema com maior impacto?</td><td>Volume, preço mediano, prazo, opções, erros</td><td>Priorizar estado/cidade</td></tr>
+        <tr><td class="priority">2</td><td>Matriz custo × prazo</td><td>Quais segmentos são caros e lentos?</td><td>Medianas normalizadas, volume e cobertura</td><td>Separar referência, premium e zona crítica</td></tr>
+        <tr><td class="priority">3</td><td>Funil de cobertura</td><td>Quantas consultas realmente têm escolha?</td><td>0, 1, 2, 3+ opções válidas</td><td>Localizar deserto ou monopólio logístico</td></tr>
+        <tr><td class="priority">4</td><td>ML × Shopee</td><td>O canal muda o perfil logístico?</td><td>Peso, destino, custo, prazo, cobertura</td><td>Distinguir efeito do canal do efeito de mix</td></tr>
+        <tr><td class="priority">5</td><td>Ranking “Onde agir?”</td><td>Qual ação tem maior retorno potencial?</td><td>Índice composto + evidências</td><td>Recomendação operacional</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <div class="section-title"><span class="num">04</span><h2>Como os gráficos devem parecer</h2></div>
+    <div class="grid">
+      <div class="card wide"><h3>Concentração por canal</h3><div class="chart"><div class="bars"><div class="bar" style="height:100%"><span>ML</span></div><div class="bar" style="height:79%"><span>Shopee</span></div><div class="bar" style="height:4%"><span>Magalu</span></div><div class="bar" style="height:2%"><span>Outros</span></div></div></div><p class="muted">Contexto de volume; não deve ser a conclusão principal.</p></div>
+      <div class="card wide"><h3>Matriz custo × prazo</h3><div class="chart quadrant"><span class="axis y">Prazo ↑</span><span class="axis x">Custo →</span><i class="dot a"></i><i class="dot b"></i><i class="dot c"></i></div><p class="muted">Tamanho do ponto = volume; cor = cobertura/risco.</p></div>
+    </div>
+    <div class="formula">prioridade = volume_normalizado × baixa_cobertura × pressão_de_custo × pressão_de_prazo</div>
+  </section>
+
+  <section>
+    <div class="section-title"><span class="num">05</span><h2>Hipóteses que podem virar descoberta</h2></div>
+    <div class="grid">
+      <div class="card third"><span class="status validate">validar</span><h3>Deserto logístico</h3><p>Regiões com poucas opções, prazo alto, preço relativo elevado e maior incidência de erros.</p></div>
+      <div class="card third"><span class="status validate">validar</span><h3>Concorrência reduz custo?</h3><p>Comparar consultas com 1, 2 e 3+ opções, controlando estado e faixa de peso.</p></div>
+      <div class="card third"><span class="status validate">validar</span><h3>O barato custa tempo?</h3><p>Medir o prêmio para economizar um dia entre a opção barata e a opção rápida.</p></div>
+      <div class="card third"><span class="status validate">validar</span><h3>Efeito do canal</h3><p>Comparar ML e Shopee com o mesmo perfil de peso e destino para evitar falso efeito de mix.</p></div>
+      <div class="card third"><span class="status validate">validar</span><h3>Faixas críticas de peso</h3><p>Detectar saltos de preço e cargas leves com custo proporcionalmente alto.</p></div>
+      <div class="card third"><span class="status validate">validar</span><h3>Cidades fora da curva</h3><p>Comparar cada cidade à referência nacional da mesma faixa de peso.</p></div>
+    </div>
+    <div class="formula">custo_por_dia_economizado = (preço_rápido − preço_barato) / (prazo_barato − prazo_rápido)</div>
+  </section>
+
+  <section>
+    <div class="section-title"><span class="num">06</span><h2>Regras analíticas obrigatórias</h2></div>
+    <div class="grid">
+      <div class="card wide"><h3>Fazer</h3><ul class="checklist"><li>Usar somente índices <code>quotations-*-2026.09</code></li><li>Congelar um intervalo fechado e usar UTC−3</li><li>Agregar tempo em janelas explícitas de 7 dias</li><li>Preferir mediana e percentis a médias brutas</li><li>Controlar peso, cubagem e destino nas comparações</li><li>Documentar filtros e regras de limpeza</li></ul></div>
+      <div class="card wide"><h3>Não fazer</h3><ul class="checklist danger"><li>Não cruzar transportadora e preço diretamente no array achatado</li><li>Não chamar <code>x_error_cotacao &gt; 0</code> de falha antes de validar</li><li>Não exibir janela parcial como período completo</li><li>Não baixar a base inteira nem fazer varredura contínua</li><li>Não colocar credenciais no frontend ou no Git</li><li>Não publicar dados comerciais brutos</li></ul></div>
+    </div>
+    <div class="callout"><strong>Armadilha técnica central:</strong> <code>nf.cotacoes</code> é um array de objetos, mas não é <em>nested</em>. Para relacionar uma transportadora ao seu preço e prazo corretos, extrair uma amostra/recorte e fazer o pareamento no código.</div>
+  </section>
+
+  <section>
+    <div class="section-title"><span class="num">07</span><h2>Divisão sugerida entre agentes</h2></div>
+    <div class="grid">
+      <div class="card third agent"><h3>Agente A · Dados</h3><p>Field caps, consultas agregadas, filtros de qualidade, extração controlada e dataset derivado.</p><small>Entrega: JSON/CSV agregado + dicionário de métricas.</small></div>
+      <div class="card third agent"><h3>Agente B · Análise</h3><p>Testar hipóteses, definir medianas/percentis, normalização e índice de prioridade.</p><small>Entrega: evidências, limitações e conclusões.</small></div>
+      <div class="card third agent"><h3>Agente C · Produto</h3><p>Dashboard, filtros, estados de carregamento, ranking e explicações automáticas.</p><small>Entrega: interface funcional e responsiva.</small></div>
+      <div class="card third agent"><h3>Agente D · Visual</h3><p>Mapa, matriz, funil, cores, hierarquia e legibilidade para apresentação.</p><small>Entrega: sistema visual consistente.</small></div>
+      <div class="card third agent"><h3>Agente E · QA</h3><p>Validar fórmulas, períodos, outliers, responsividade, segurança e narrativa.</p><small>Entrega: checklist com evidências.</small></div>
+      <div class="card third agent"><h3>Agente F · Pitch</h3><p>Roteiro de 3–5 minutos: problema, descoberta, demonstração, decisão e impacto.</p><small>Entrega: script e perguntas difíceis.</small></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title"><span class="num">08</span><h2>Critério de pronto</h2></div>
+    <ul class="checklist">
+      <li>Os três gráficos principais contam uma única história.</li>
+      <li>Cada visual termina em uma interpretação ou decisão.</li>
+      <li>O intervalo, fuso e janela de sete dias aparecem na tela.</li>
+      <li>Outliers não distorcem a conclusão e os filtros são auditáveis.</li>
+      <li>O ranking explica por que cada local é prioritário.</li>
+      <li>Nenhuma credencial ou dado sensível está exposto.</li>
+      <li>A demonstração funciona sem depender de consulta pesada ao vivo.</li>
+    </ul>
+    <div class="callout green"><strong>Frase de encerramento:</strong> “Não mostramos apenas quanto custa o frete. Mostramos onde a operação perde competitividade, por que isso acontece e onde agir primeiro.”</div>
+  </section>
+
+  <footer>Documento de alinhamento · Grupo 05 · Dados sujeitos à atualização durante o evento · Sem credenciais</footer>
+</main>
+</body>
+</html>

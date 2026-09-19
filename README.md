@@ -10,7 +10,7 @@ Dashboard de análise das cotações de frete da Sisfrete (Hackathon Unimar Tech
 | `api.py` | Camada fina de HTTP: autenticação, retentativas, erros, paginação |
 | `queries.py` | Consultas OpenSearch e preparação em DataFrames |
 | `charts.py` | Gráficos Plotly |
-| `chat.py` | Chatbot: tool use sobre as funções de `queries.py` (OpenRouter) |
+| `chat.py` | Chatbot: tool use sobre as funções de `queries.py` (OpenRouter), 8 ferramentas |
 
 Fluxo: `app.py` → `queries.py` → `api.py` → Sisfrete/OpenSearch → `queries.py` → `charts.py` → dashboard.
 
@@ -24,12 +24,29 @@ cp .env.example .env          # preencha as credenciais do grupo
 streamlit run app.py
 ```
 
+## O que o dashboard responde
+
+1. **Funil de cobertura** — quantas consultas têm 0, 1, 2 ou 3+ opções. Hoje
+   ~21% das consultas não recebem nenhuma opção de frete.
+2. **Pressão logística por estado** — índice 0-100 combinando volume, custo
+   mediano, prazo e número de transportadoras. Responde "onde agir primeiro".
+3. **Transportadoras vencedoras** — quem ganha a cotação, por nome, com custo
+   mediano e prazo (vem de `nf.menor_preco`/`nf.menor_prazo`, um elemento por
+   consulta, sem o problema do array achatado).
+4. **Custo por faixa de peso** e **preço da pressa** (R$ por dia economizado
+   entre a opção mais barata e a mais rápida).
+
+Filtros: cidade, canal e **cliente/loja por nome**. A base não tem razão
+social: o nome é derivado de `nf.token_nome` ("Mercado Livre - PNEUWEB" vira
+"Pneuweb"); quem só tem o token do marketplace aparece como "Loja sem nome N".
+
 ## Chatbot
 
 A aba "Pergunte aos dados" usa um modelo via OpenRouter. Ele não escreve query
 de OpenSearch: escolhe entre quatro ferramentas (`comparar_transportadoras`,
-`custo_por_peso`, `volume_por_canal`, `cidades_com_mais_cotacoes`), que devolvem
-números e os mesmos gráficos do dashboard.
+`custo_por_peso`, `volume_por_canal`, `cidades_com_mais_cotacoes`, `cobertura`,
+`pressao_por_estado`, `preco_da_pressa`, `lojas`), que devolvem números e os
+mesmos gráficos do dashboard.
 
 Preencha no `.env`:
 

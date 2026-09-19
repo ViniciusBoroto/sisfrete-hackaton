@@ -30,7 +30,8 @@ devolveram — nunca invente valores.
 Contexto dos dados:
 - Cotações da Sisfrete, 01/09 a 14/09/2026. Só existe esse período.
 - Nomes de cidade vêm em CAIXA ALTA e sem acento (SAO PAULO, GOIANIA).
-- Transportadoras são IDs numéricos, não têm nome.
+- Transportadora sai com nome (Jadlog, Correios) nas ferramentas de vencedoras.
+- Loja/cliente também é por nome; use `lojas` para descobrir quais existem.
 - nf.cotacoes é array achatado: a correlação transportadora x custo x prazo já
   é feita em Python pelas ferramentas. Não tente contornar isso.
 
@@ -49,18 +50,30 @@ def _normalizar_cidade(nome: str | None) -> str | None:
 # --------------------------------------------------------------- ferramentas
 
 
+def _cliente_id(nome: str | None) -> int | None:
+    """Converte o nome da loja no ID interno, que é o que a query usa."""
+    if not nome:
+        return None
+    lojas = queries.clientes(top=60)
+    achado = lojas[lojas["nome"].str.lower() == nome.strip().lower()]
+    if achado.empty:
+        achado = lojas[lojas["nome"].str.lower().str.contains(nome.strip().lower())]
+    return int(achado.iloc[0]["cliente"]) if not achado.empty else None
+
+
 def _comparar_transportadoras(
-    cidade: str | None = None, canal: str | None = None, max_docs: int = 2_000
+    cidade: str | None = None, canal: str | None = None, loja: str | None = None
 ) -> dict:
-    detalhe = queries.cotacoes_detalhadas(
-        cidade=_normalizar_cidade(cidade), canal=canal, max_docs=max_docs
+    consulta = queries.filtro(
+        cidade=_normalizar_cidade(cidade), canal=canal, cliente=_cliente_id(loja)
     )
-    resumo = queries.resumo_transportadoras(detalhe)
+    resumo = queries.transportadoras_vencedoras(consulta)
     if resumo.empty:
         return {"texto": "Sem cotações para esse filtro.", "figuras": []}
-    destino = cidade or "todos os destinos"
+    destino = cidade or loja or "todos os destinos"
+    colunas = ["transportadora", "cotacoes", "custo_mediano", "prazo_medio"]
     return {
-        "texto": resumo.head(10).to_markdown(index=False),
+        "texto": resumo[colunas].head(10).to_markdown(index=False),
         "figuras": [
             charts.custo_x_prazo(resumo, f"Custo x prazo · {destino}"),
             charts.comparativo_transportadoras(resumo),
@@ -68,9 +81,68 @@ def _comparar_transportadoras(
     }
 
 
-def _custo_por_peso(cidade: str | None = None, canal: str | None = None) -> dict:
+def _cobertura(
+    cidade: str | None = None, canal: str | None = None, loja: str | None = None
+) -> dict:
+    amostra = queries.amostra(
+        cidade=_normalizar_cidade(cidade),
+        canal=canal,
+        cliente=_cliente_id(loja),
+        max_docs=2_000,
+    )
+    cobertura = queries.cobertura(amostra)
+    if cobertura.empty:
+        return {"texto": "Sem consultas para esse filtro.", "figuras": []}
+    return {
+        "texto": cobertura.to_markdown(index=False),
+        "figuras": [charts.funil_cobertura(cobertura)],
+    }
+
+
+def _pressao_estados(canal: str | None = None, loja: str | None = None) -> dict:
+    df = queries.pressao_por_estado(
+        queries.filtro(canal=canal, cliente=_cliente_id(loja))
+    )
+    if df.empty:
+        return {"texto": "Sem dados para esse filtro.", "figuras": []}
+    return {
+        "texto": df.head(10).to_markdown(index=False),
+        "figuras": [charts.pressao_estados(df)],
+    }
+
+
+def _preco_da_pressa(
+    cidade: str | None = None, canal: str | None = None, loja: str | None = None
+) -> dict:
+    amostra = queries.amostra(
+        cidade=_normalizar_cidade(cidade),
+        canal=canal,
+        cliente=_cliente_id(loja),
+        max_docs=2_000,
+    )
+    premios = queries.premio_por_dia(amostra)
+    if premios.empty:
+        return {"texto": "Amostra sem par barato/rápido para medir.", "figuras": []}
+    mediana = amostra["premio_por_dia"].median()
+    return {
+        "texto": f"Prêmio mediano geral: R$ {mediana:.2f} por dia economizado.\n\n"
+        + premios.to_markdown(index=False),
+        "figuras": [charts.premio_por_dia(premios)],
+    }
+
+
+def _lojas(top: int = 20) -> dict:
+    df = queries.clientes(top=top)
+    return {"texto": df[["nome", "cotacoes"]].to_markdown(index=False), "figuras": []}
+
+
+def _custo_por_peso(
+    cidade: str | None = None, canal: str | None = None, loja: str | None = None
+) -> dict:
     df = queries.custo_por_faixa_peso(
-        queries.filtro(cidade=_normalizar_cidade(cidade), canal=canal)
+        queries.filtro(
+            cidade=_normalizar_cidade(cidade), canal=canal, cliente=_cliente_id(loja)
+        )
     )
     if df.empty:
         return {"texto": "Sem cotações para esse filtro.", "figuras": []}
@@ -98,6 +170,10 @@ FERRAMENTAS: dict[str, Callable[..., dict]] = {
     "custo_por_peso": _custo_por_peso,
     "volume_por_canal": _volume_por_canal,
     "cidades_com_mais_cotacoes": _cidades,
+    "cobertura": _cobertura,
+    "pressao_por_estado": _pressao_estados,
+    "preco_da_pressa": _preco_da_pressa,
+    "lojas": _lojas,
 }
 
 ESPECIFICACAO = [
@@ -106,9 +182,8 @@ ESPECIFICACAO = [
         "function": {
             "name": "comparar_transportadoras",
             "description": (
-                "Custo médio, custo mediano, prazo médio e volume por "
-                "transportadora, com gráficos de custo x prazo. Baixa documentos "
-                "e correlaciona em Python — é a chamada mais lenta."
+                "Transportadoras que ganham as cotações, por NOME, com custo "
+                "mediano, prazo médio e volume, mais gráficos de custo x prazo."
             ),
             "parameters": {
                 "type": "object",
@@ -118,9 +193,9 @@ ESPECIFICACAO = [
                         "type": "string",
                         "description": "Canal de venda, ex.: Mercado Livre",
                     },
-                    "max_docs": {
-                        "type": "integer",
-                        "description": "Documentos a baixar (1000 a 20000)",
+                    "loja": {
+                        "type": "string",
+                        "description": "Nome do cliente/loja, ex.: Pneuweb",
                     },
                 },
             },
@@ -136,6 +211,7 @@ ESPECIFICACAO = [
                 "properties": {
                     "cidade": {"type": "string"},
                     "canal": {"type": "string"},
+                    "loja": {"type": "string"},
                 },
             },
         },
@@ -153,6 +229,71 @@ ESPECIFICACAO = [
         "function": {
             "name": "cidades_com_mais_cotacoes",
             "description": "Cidades de destino com mais cotações no período.",
+            "parameters": {
+                "type": "object",
+                "properties": {"top": {"type": "integer"}},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cobertura",
+            "description": (
+                "Funil de cobertura: quantas consultas tiveram 0, 1, 2 ou 3+ "
+                "opções de frete. Mostra deserto logístico e monopólio."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cidade": {"type": "string"},
+                    "canal": {"type": "string"},
+                    "loja": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "pressao_por_estado",
+            "description": (
+                "Ranking de estados por pressão logística: volume, custo "
+                "mediano, prazo e número de transportadoras. Responde 'onde "
+                "agir primeiro'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "canal": {"type": "string"},
+                    "loja": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "preco_da_pressa",
+            "description": (
+                "Quanto custa economizar um dia de prazo: diferença entre a "
+                "opção mais rápida e a mais barata, por estado."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cidade": {"type": "string"},
+                    "canal": {"type": "string"},
+                    "loja": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "lojas",
+            "description": "Clientes (lojas) com mais cotações, por nome.",
             "parameters": {
                 "type": "object",
                 "properties": {"top": {"type": "integer"}},

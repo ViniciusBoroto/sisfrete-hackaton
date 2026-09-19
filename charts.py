@@ -41,10 +41,17 @@ def custo_x_prazo(resumo: pd.DataFrame, titulo: str = "Custo x prazo") -> go.Fig
 
 def comparativo_transportadoras(resumo: pd.DataFrame, top: int = 15) -> go.Figure:
     """Custo médio das transportadoras com maior volume, prazo no eixo direito."""
-    resumo = resumo.nlargest(top, "cotacoes").sort_values("custo_medio")
+    resumo = resumo.nlargest(top, "cotacoes").sort_values("custo_mediano")
     fig = go.Figure()
     rotulos = resumo["transportadora"].astype(str)
-    fig.add_bar(x=rotulos, y=resumo["custo_medio"], name="Custo médio (R$)")
+    fig.add_bar(
+        x=rotulos,
+        y=resumo["custo_mediano"],
+        name="Custo mediano (R$)",
+        customdata=resumo[["custo_medio"]],
+        hovertemplate="Transportadora %{x}<br>Mediano: R$ %{y:.2f}"
+        "<br>Médio: R$ %{customdata[0]:.2f}<extra></extra>",
+    )
     fig.add_scatter(
         x=rotulos,
         y=resumo["prazo_medio"],
@@ -57,7 +64,7 @@ def comparativo_transportadoras(resumo: pd.DataFrame, top: int = 15) -> go.Figur
         title=f"Custo e prazo · {top} transportadoras com mais volume",
         xaxis_title="Transportadora",
         xaxis_type="category",
-        yaxis_title="Custo médio (R$)",
+        yaxis_title="Custo mediano (R$)",
         yaxis2=dict(title="Prazo médio (dias)", overlaying="y", side="right"),
         legend=dict(orientation="h", y=1.1),
     )
@@ -92,6 +99,73 @@ def volume_por_janela(df: pd.DataFrame, dias: int = 7) -> go.Figure:
         yaxis2=dict(title="Custo médio (R$)", overlaying="y", side="right"),
         legend=dict(orientation="h", y=1.1),
     )
+    return fig
+
+
+def funil_cobertura(df: pd.DataFrame) -> go.Figure:
+    """Quantas consultas têm escolha de verdade — onde não há, não há mercado."""
+    cores = ["#dc5a5a", "#f3a712", "#6ba8c9", "#00b978"]
+    fig = px.bar(
+        df,
+        x="faixa",
+        y="consultas",
+        color="faixa",
+        color_discrete_sequence=cores,
+        text=df["participacao"].map(lambda p: f"{p:.0%}"),
+        labels={"faixa": "Opções na consulta", "consultas": "Consultas"},
+        title="Funil de cobertura: quantas consultas têm escolha",
+        template=TEMPLATE,
+    )
+    fig.update_traces(textposition="outside")
+    fig.update_layout(showlegend=False)
+    return fig
+
+
+def pressao_estados(df: pd.DataFrame, top: int = 12) -> go.Figure:
+    """Ranking de onde agir: volume alto, caro, lento e com pouca concorrência."""
+    dados = df.nlargest(top, "pressao").sort_values("pressao")
+    fig = px.bar(
+        dados,
+        x="pressao",
+        y="uf",
+        orientation="h",
+        color="pressao",
+        # Escala escura -> clara: no fundo escuro, quanto mais brilhante, pior.
+        color_continuous_scale=["#5b2419", "#f3a712"],
+        custom_data=["cotacoes", "custo_mediano", "prazo_medio", "transportadoras"],
+        labels={"pressao": "Índice de pressão (0-100)", "uf": "UF"},
+        title="Onde agir primeiro · pressão logística por estado",
+        template=TEMPLATE,
+    )
+    fig.update_traces(
+        hovertemplate="%{y}<br>Pressão: %{x:.0f}/100<br>Consultas: %{customdata[0]:,}"
+        "<br>Custo mediano: R$ %{customdata[1]:.2f}"
+        "<br>Prazo médio: %{customdata[2]:.1f} dias"
+        "<br>Transportadoras: %{customdata[3]}<extra></extra>"
+    )
+    fig.update_layout(coloraxis_showscale=False)
+    return fig
+
+
+def premio_por_dia(df: pd.DataFrame) -> go.Figure:
+    """Quanto custa comprar um dia a menos de prazo, por estado."""
+    fig = px.bar(
+        df,
+        x="premio_mediano",
+        y="uf",
+        orientation="h",
+        color="premio_mediano",
+        color_continuous_scale="Teal",
+        custom_data=["consultas"],
+        labels={"premio_mediano": "R$ por dia economizado", "uf": "UF"},
+        title="O preço da pressa: custo mediano de economizar um dia",
+        template=TEMPLATE,
+    )
+    fig.update_traces(
+        hovertemplate="%{y}<br>R$ %{x:.2f} por dia"
+        "<br>Consultas com escolha: %{customdata[0]}<extra></extra>"
+    )
+    fig.update_layout(coloraxis_showscale=False)
     return fig
 
 

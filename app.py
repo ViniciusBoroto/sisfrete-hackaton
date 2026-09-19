@@ -35,18 +35,41 @@ def _canais():
 
 
 @st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
-def _total(cidade: str | None, canal: str | None):
-    return get_client().count(queries.filtro(cidade=cidade, canal=canal))
+def _clientes(top: int):
+    return queries.clientes(top=top)
 
 
 @st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
-def _faixas_peso(cidade: str | None, canal: str | None):
-    return queries.custo_por_faixa_peso(queries.filtro(cidade=cidade, canal=canal))
+def _total(cidade: str | None, canal: str | None, cliente: int | None):
+    return get_client().count(
+        queries.filtro(cidade=cidade, canal=canal, cliente=cliente)
+    )
 
 
-@st.cache_data(ttl=TTL, show_spinner="Baixando cotações...")
-def _detalhe(cidade: str | None, canal: str | None, max_docs: int):
-    return queries.cotacoes_detalhadas(cidade=cidade, canal=canal, max_docs=max_docs)
+@st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
+def _vencedoras(cidade: str | None, canal: str | None, cliente: int | None):
+    return queries.transportadoras_vencedoras(
+        queries.filtro(cidade=cidade, canal=canal, cliente=cliente)
+    )
+
+
+@st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
+def _pressao(canal: str | None, cliente: int | None):
+    return queries.pressao_por_estado(queries.filtro(canal=canal, cliente=cliente))
+
+
+@st.cache_data(ttl=TTL, show_spinner="Amostrando consultas...")
+def _amostra(cidade: str | None, canal: str | None, cliente: int | None, max_docs: int):
+    return queries.amostra(
+        cidade=cidade, canal=canal, cliente=cliente, max_docs=max_docs
+    )
+
+
+@st.cache_data(ttl=TTL, show_spinner="Consultando a Sisfrete...")
+def _faixas_peso(cidade: str | None, canal: str | None, cliente: int | None):
+    return queries.custo_por_faixa_peso(
+        queries.filtro(cidade=cidade, canal=canal, cliente=cliente)
+    )
 
 
 def main() -> None:
@@ -64,56 +87,105 @@ def main() -> None:
         )
         canais = _canais()
         canal = st.selectbox("Canal de venda", ["Todos", *canais["canal"]], index=0)
-        max_docs = st.slider("Documentos por análise", 1_000, 20_000, 2_000, 1_000)
+        lojas = _clientes(top=40)
+        nome_loja = st.selectbox("Cliente (loja)", ["Todos", *lojas["nome"]], index=0)
+        max_docs = st.slider("Consultas amostradas", 1_000, 20_000, 2_000, 1_000)
 
     cidade = None if cidade == "Todas" else cidade
     canal = None if canal == "Todos" else canal
-
-    detalhe = _detalhe(cidade, canal, max_docs)
-    resumo = queries.resumo_transportadoras(detalhe)
+    cliente = (
+        None
+        if nome_loja == "Todos"
+        else int(lojas.loc[lojas["nome"] == nome_loja, "cliente"].iloc[0])
+    )
 
     painel, conversa = st.tabs(["Dashboard", "Pergunte aos dados"])
 
     with conversa:
-        _chat(cidade, canal)
+        _chat(cidade, canal, nome_loja)
 
     with painel:
-        _dashboard(detalhe, resumo, cidade, canal, canais)
+        _dashboard(cidade, canal, cliente, nome_loja, canais, max_docs)
 
 
-def _dashboard(detalhe, resumo, cidade, canal, canais) -> None:
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Cotações no período", _br(_total(cidade, canal), 0))
-    col2.metric("Transportadoras", 0 if resumo.empty else len(resumo))
+def _dashboard(cidade, canal, cliente, nome_loja, canais, max_docs) -> None:
+    amostra = _amostra(cidade, canal, cliente, max_docs)
+    cobertura = queries.cobertura(amostra)
+    vencedoras = _vencedoras(cidade, canal, cliente)
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Consultas no período", _br(_total(cidade, canal, cliente), 0))
+    sem_opcao = (
+        0.0
+        if cobertura.empty
+        else float(
+            cobertura.loc[cobertura["faixa"] == "sem opção", "participacao"].sum()
+        )
+    )
+    col2.metric("Consultas sem nenhuma opção", f"{sem_opcao:.0%}")
     col3.metric(
-        "Custo médio",
-        "—" if resumo.empty else f"R$ {_br(detalhe['total'].mean())}",
+        "Custo mediano da mais barata",
+        "—" if amostra.empty else f"R$ {_br(amostra['preco_barato'].median())}",
+    )
+    premio = amostra["premio_por_dia"].median() if not amostra.empty else float("nan")
+    col4.metric(
+        "Preço de um dia a menos",
+        "—" if premio != premio else f"R$ {_br(premio)}",
     )
 
-    st.plotly_chart(
-        charts.custo_por_faixa_peso(_faixas_peso(cidade, canal)), width="stretch"
-    )
-
-    if resumo.empty:
-        st.info("Sem cotações para este filtro.")
+    if amostra.empty:
+        st.info("Sem consultas para este filtro.")
         return
 
+    st.subheader("1. Quem tem escolha e quem não tem")
     esq, dir_ = st.columns(2)
     esq.plotly_chart(
-        charts.custo_x_prazo(resumo, f"Custo x prazo · {cidade or 'todos os destinos'}"),
-        width="stretch",
+        charts.funil_cobertura(cobertura), width="stretch", key="funil"
     )
     dir_.plotly_chart(
-        charts.comparativo_transportadoras(resumo), width="stretch"
+        charts.pressao_estados(_pressao(canal, cliente)),
+        width="stretch",
+        key="pressao",
     )
 
-    st.plotly_chart(charts.volume_por_canal(canais), width="stretch")
+    st.subheader("2. Quem ganha as cotações e a que preço")
+    esq2, dir2 = st.columns(2)
+    destino = cidade or (nome_loja if nome_loja != "Todos" else "todos os destinos")
+    esq2.plotly_chart(
+        charts.custo_x_prazo(vencedoras, f"Custo x prazo · {destino}"),
+        width="stretch",
+        key="custo_prazo",
+    )
+    dir2.plotly_chart(
+        charts.comparativo_transportadoras(vencedoras),
+        width="stretch",
+        key="comparativo",
+    )
 
-    with st.expander("Detalhamento por transportadora"):
-        st.dataframe(resumo, width="stretch")
+    st.subheader("3. Onde o custo aperta")
+    esq3, dir3 = st.columns(2)
+    esq3.plotly_chart(
+        charts.custo_por_faixa_peso(_faixas_peso(cidade, canal, cliente)),
+        width="stretch",
+        key="faixa_peso",
+    )
+    premios = queries.premio_por_dia(amostra)
+    if premios.empty:
+        dir3.info("Amostra sem par barato/rápido suficiente para medir o prêmio.")
+    else:
+        dir3.plotly_chart(
+            charts.premio_por_dia(premios), width="stretch", key="premio"
+        )
+
+    st.plotly_chart(
+        charts.volume_por_canal(canais), width="stretch", key="canais"
+    )
+
+    with st.expander("Transportadoras vencedoras · tabela"):
+        st.dataframe(vencedoras, width="stretch")
 
 
-def _chat(cidade: str | None, canal: str | None) -> None:
+def _chat(cidade: str | None, canal: str | None, loja: str = "Todos") -> None:
     """Conversa com os dados: o modelo chama as funções de queries.py."""
     st.caption(
         "Pergunte em português. Ex.: “qual transportadora é mais barata em "
@@ -122,11 +194,11 @@ def _chat(cidade: str | None, canal: str | None) -> None:
     if "historico" not in st.session_state:
         st.session_state.historico = []
 
-    for msg in st.session_state.historico:
+    for i, msg in enumerate(st.session_state.historico):
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-            for fig in msg.get("figuras", []):
-                st.plotly_chart(fig, width="stretch")
+            for j, fig in enumerate(msg.get("figuras", [])):
+                st.plotly_chart(fig, width="stretch", key=f"hist_{i}_{j}")
 
     pergunta = st.chat_input("Pergunte sobre as cotações")
     if not pergunta:
@@ -135,6 +207,7 @@ def _chat(cidade: str | None, canal: str | None) -> None:
     ativos = (
         f"cidade {cidade}" if cidade else "",
         f"canal {canal}" if canal else "",
+        f"loja {loja}" if loja != "Todos" else "",
     )
     contexto = ", ".join(f for f in ativos if f)
     if contexto:
@@ -157,8 +230,9 @@ def _chat(cidade: str | None, canal: str | None) -> None:
             st.session_state.historico.pop()
             return
         st.markdown(texto)
-        for fig in figuras:
-            st.plotly_chart(fig, width="stretch")
+        rodada = len(st.session_state.historico)
+        for j, fig in enumerate(figuras):
+            st.plotly_chart(fig, width="stretch", key=f"nova_{rodada}_{j}")
 
     st.session_state.historico.append(
         {"role": "assistant", "content": texto, "figuras": figuras}

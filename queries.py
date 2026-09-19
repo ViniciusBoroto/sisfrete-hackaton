@@ -16,6 +16,14 @@ from api import INDEX, TIME_ZONE, get_client
 INICIO = "2026-09-01"
 FIM = "2026-09-15"
 
+# A loja aparece com nome só aqui; nf.cliente é ID e não diz nada a ninguém.
+LOJA = "nf.token_nome"
+
+# Vencedoras de cada consulta: trazem o NOME da transportadora, além de preço
+# e prazo, em objetos de um elemento — agregar direto é seguro.
+BARATA = "nf.menor_preco"
+RAPIDA = "nf.menor_prazo"
+
 # Campos mínimos para correlacionar transportadora x custo x prazo.
 CAMPOS = [
     "@timestamp",
@@ -40,6 +48,7 @@ def filtro(
     cidade: str | None = None,
     estado: str | None = None,
     canal: str | None = None,
+    cliente: int | None = None,
     inicio: str = INICIO,
     fim: str = FIM,
 ) -> dict:
@@ -48,9 +57,11 @@ def filtro(
     if cidade:
         must.append({"term": {"nf.nome_cidade": cidade}})
     if estado:
-        must.append({"term": {"nf.estado": estado}})
+        must.append({"term": {"nf.uf": estado}})
     if canal:
         must.append({"term": {"nf.canal_web": canal}})
+    if cliente:
+        must.append({"term": {"nf.cliente": cliente}})
     return {"bool": {"filter": must}}
 
 
@@ -207,6 +218,309 @@ def custo_por_faixa_peso(
         + " kg"
     )
     return df
+
+
+# Tokens que são nome de marketplace, não da loja.
+GENERICOS = {
+    "shopee",
+    "mercado livre",
+    "magalu",
+    "magazine luiza",
+    "magazine",
+    "api sisfrete",
+    "ws sisfrete",
+    "via varejo",
+    "carrefour",
+    "tray corp",
+    "leroy merlin",
+    "madeira madeira",
+}
+PREFIXOS = ("p-ml-", "p-sh-", "ml - ", "mercado livre - ", "shopee - ", "magalu - ")
+SUFIXOS = (" - shopee", " - mercado livre", " - magalu", " - magazine luiza")
+
+
+def _nome_cliente(tokens: list[str]) -> str:
+    """Extrai um nome legível dos tokens de integração do cliente.
+
+    Não existe campo com a razão social: o que há é nf.token_nome, no formato
+    "Mercado Livre - PNEUWEB" ou "P-ML-FORMIGAO". Tiramos o prefixo do
+    marketplace e ficamos com o que identifica a loja.
+    """
+    for token in tokens:
+        limpo = (token or "").strip()
+        if not limpo or limpo.replace(".", "").replace("/", "").replace("-", "").isdigit():
+            continue
+        minusculo = limpo.lower()
+        for prefixo in PREFIXOS:
+            if minusculo.startswith(prefixo):
+                limpo = limpo[len(prefixo) :]
+                minusculo = limpo.lower()
+                break
+        for sufixo in SUFIXOS:
+            if minusculo.endswith(sufixo):
+                limpo = limpo[: -len(sufixo)]
+                minusculo = limpo.lower()
+                break
+        if minusculo in GENERICOS or not limpo:
+            continue
+        return limpo.title()
+    return ""
+
+
+def clientes(query: dict | None = None, top: int = 40) -> pd.DataFrame:
+    """Clientes (lojas) com mais cotações, já com nome no lugar do ID."""
+    aggs = {
+        "clientes": {
+            "terms": {"field": "nf.cliente", "size": top},
+            "aggs": {"tokens": {"terms": {"field": LOJA, "size": 10}}},
+        }
+    }
+    buckets = get_client().aggregate(aggs, query or periodo())["clientes"]["buckets"]
+    linhas = []
+    sem_nome = 0
+    for b in buckets:
+        tokens = [t["key"] for t in b["tokens"]["buckets"]]
+        nome = _nome_cliente(tokens)
+        if not nome:
+            # Alguns clientes só têm o token do marketplace: a base não guarda
+            # a razão social. Numeramos em vez de expor o ID.
+            sem_nome += 1
+            nome = f"Loja sem nome {sem_nome}"
+        linhas.append(
+            {"cliente": b["key"], "nome": nome, "cotacoes": b["doc_count"]}
+        )
+    df = pd.DataFrame(linhas)
+    if df.empty:
+        return df
+    # Dois clientes podem cair no mesmo nome: numera em vez de mostrar o ID.
+    duplicados = df["nome"].duplicated(keep=False)
+    if duplicados.any():
+        ordem = df[duplicados].groupby("nome").cumcount() + 1
+        df.loc[duplicados, "nome"] = (
+            df.loc[duplicados, "nome"] + " " + ordem.astype(str)
+        )
+    return df
+
+
+def transportadoras_vencedoras(
+    query: dict | None = None, top: int = 15, criterio: str = "preco"
+) -> pd.DataFrame:
+    """Transportadoras que ganham a cotação, com nome, custo e prazo.
+
+    Agrega nf.menor_preco / nf.menor_prazo, que têm um elemento por consulta —
+    ao contrário de nf.cotacoes, aqui não há risco de misturar transportadora
+    de uma oferta com o preço de outra.
+    """
+    raiz = BARATA if criterio == "preco" else RAPIDA
+    aggs = {
+        "transportadoras": {
+            "terms": {"field": f"{raiz}.shipping_company", "size": top},
+            "aggs": {
+                "custo": {
+                    "percentiles": {"field": f"{raiz}.preco", "percents": [25, 50, 75]}
+                },
+                "custo_medio": {"avg": {"field": f"{raiz}.preco"}},
+                "prazo_medio": {"avg": {"field": f"{raiz}.shipping_time"}},
+            },
+        }
+    }
+    aggs["transportadoras"]["terms"]["size"] = top * 3
+    buckets = get_client().aggregate(aggs, query or periodo())["transportadoras"][
+        "buckets"
+    ]
+    df = pd.DataFrame(
+        {
+            "transportadora": b["key"].title(),
+            "cotacoes": b["doc_count"],
+            "custo_mediano": b["custo"]["values"]["50.0"],
+            "custo_p25": b["custo"]["values"]["25.0"],
+            "custo_p75": b["custo"]["values"]["75.0"],
+            "custo_medio": b["custo_medio"]["value"],
+            "prazo_medio": b["prazo_medio"]["value"],
+        }
+        for b in buckets
+    )
+    if df.empty:
+        return df
+    # A base grava o mesmo nome em caixas diferentes ("JADLOG" e "Jadlog"):
+    # junta os dois e pondera as medianas pelo volume de cada um.
+    return (
+        df.assign(
+            peso_custo=df["custo_mediano"] * df["cotacoes"],
+            peso_prazo=df["prazo_medio"] * df["cotacoes"],
+        )
+        .groupby("transportadora", as_index=False)
+        .agg(
+            cotacoes=("cotacoes", "sum"),
+            peso_custo=("peso_custo", "sum"),
+            peso_prazo=("peso_prazo", "sum"),
+            custo_p25=("custo_p25", "min"),
+            custo_p75=("custo_p75", "max"),
+            custo_medio=("custo_medio", "mean"),
+        )
+        .assign(
+            custo_mediano=lambda d: d["peso_custo"] / d["cotacoes"],
+            prazo_medio=lambda d: d["peso_prazo"] / d["cotacoes"],
+        )
+        .drop(columns=["peso_custo", "peso_prazo"])
+        .nlargest(top, "cotacoes")
+        .sort_values("custo_mediano")
+    )
+
+
+def pressao_por_estado(query: dict | None = None, top: int = 27) -> pd.DataFrame:
+    """Volume, custo, prazo e concorrência por UF, com índice de pressão.
+
+    pressao = volume x custo x prazo x (falta de concorrência), tudo
+    normalizado de 0 a 1 — é o ranking de "onde agir primeiro".
+    """
+    aggs = {
+        "ufs": {
+            "terms": {"field": "nf.uf", "size": top},
+            "aggs": {
+                "custo": {"percentiles": {"field": f"{BARATA}.preco", "percents": [50]}},
+                "prazo_medio": {"avg": {"field": f"{BARATA}.shipping_time"}},
+                "transportadoras": {
+                    "cardinality": {"field": f"{BARATA}.shipping_company"}
+                },
+            },
+        }
+    }
+    buckets = get_client().aggregate(aggs, query or periodo())["ufs"]["buckets"]
+    df = pd.DataFrame(
+        {
+            "uf": b["key"],
+            "cotacoes": b["doc_count"],
+            "custo_mediano": b["custo"]["values"]["50.0"],
+            "prazo_medio": b["prazo_medio"]["value"],
+            "transportadoras": b["transportadoras"]["value"],
+        }
+        for b in buckets
+    )
+    if df.empty:
+        return df
+
+    def normalizar(serie: pd.Series) -> pd.Series:
+        faixa = serie.max() - serie.min()
+        return (serie - serie.min()) / faixa if faixa else serie * 0 + 0.5
+
+    bruto = (
+        normalizar(df["cotacoes"])
+        * normalizar(df["custo_mediano"])
+        * normalizar(df["prazo_medio"])
+        * (1 - normalizar(df["transportadoras"]))
+    )
+    # O produto de quatro frações vira um número minúsculo; reescala para 0-100
+    # onde 100 é o estado sob maior pressão.
+    df["pressao"] = bruto / bruto.max() * 100 if bruto.max() else bruto
+    return df.sort_values("pressao", ascending=False)
+
+
+# --------------------------------------------------- amostra por consulta
+
+AMOSTRA = [
+    "nf.uf",
+    "nf.nome_cidade",
+    "nf.canal_web",
+    "nf.peso",
+    "nf.cotacoes.total",
+    f"{BARATA}.preco",
+    f"{BARATA}.shipping_time",
+    f"{BARATA}.shipping_company",
+    f"{RAPIDA}.preco",
+    f"{RAPIDA}.shipping_time",
+    f"{RAPIDA}.shipping_company",
+]
+
+
+def _primeiro(valor) -> dict:
+    """menor_preco/menor_prazo vêm como lista de um elemento."""
+    if isinstance(valor, list):
+        return valor[0] if valor else {}
+    return valor or {}
+
+
+def amostra(
+    cidade: str | None = None,
+    estado: str | None = None,
+    canal: str | None = None,
+    cliente: int | None = None,
+    max_docs: int = 3_000,
+) -> pd.DataFrame:
+    """Uma linha por consulta: quantas opções teve e quanto custa ter pressa."""
+    docs = get_client().scan(
+        query=filtro(cidade, estado, canal, cliente),
+        source=AMOSTRA,
+        page_size=min(2_000, max_docs),
+        max_docs=max_docs,
+    )
+    linhas = []
+    for doc in docs:
+        nf = doc.get("nf", {}) or {}
+        barata, rapida = _primeiro(nf.get("menor_preco")), _primeiro(nf.get("menor_prazo"))
+        cotacoes = nf.get("cotacoes") or []
+        linhas.append(
+            {
+                "uf": nf.get("uf"),
+                "cidade": nf.get("nome_cidade"),
+                "canal": nf.get("canal_web"),
+                "peso": nf.get("peso"),
+                "opcoes": len(cotacoes),
+                "transportadora_barata": (barata.get("shipping_company") or "").title(),
+                "preco_barato": barata.get("preco"),
+                "prazo_barato": barata.get("shipping_time"),
+                "preco_rapido": rapida.get("preco"),
+                "prazo_rapido": rapida.get("shipping_time"),
+            }
+        )
+    df = pd.DataFrame(linhas)
+    if df.empty:
+        return df
+
+    dias = df["prazo_barato"] - df["prazo_rapido"]
+    extra = df["preco_rapido"] - df["preco_barato"]
+    # Só faz sentido quando a rápida é realmente mais rápida e mais cara.
+    valido = (dias > 0) & (extra > 0)
+    df["premio_por_dia"] = (extra / dias).where(valido)
+    return df
+
+
+def cobertura(df: pd.DataFrame) -> pd.DataFrame:
+    """Quantas consultas tiveram 0, 1, 2 ou 3+ opções de frete."""
+    if df.empty:
+        return df
+    faixas = pd.cut(
+        df["opcoes"],
+        bins=[-1, 0, 1, 2, float("inf")],
+        labels=["sem opção", "1 opção", "2 opções", "3+ opções"],
+    )
+    total = len(df)
+    resumo = (
+        faixas.value_counts()
+        .rename_axis("faixa")
+        .reset_index(name="consultas")
+        .sort_values("faixa")
+    )
+    resumo["participacao"] = resumo["consultas"] / total
+    return resumo
+
+
+def premio_por_dia(df: pd.DataFrame, top: int = 10) -> pd.DataFrame:
+    """Quanto custa, por UF, economizar um dia de prazo."""
+    if df.empty or df["premio_por_dia"].isna().all():
+        return pd.DataFrame()
+    resumo = (
+        df.dropna(subset=["premio_por_dia"])
+        .groupby("uf")
+        .agg(
+            premio_mediano=("premio_por_dia", "median"),
+            consultas=("premio_por_dia", "size"),
+        )
+        .reset_index()
+        .nlargest(top, "consultas")
+        .sort_values("premio_mediano")
+    )
+    return resumo
 
 
 # ----------------------------------------------- correlação transportadora
